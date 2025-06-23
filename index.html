@@ -434,9 +434,26 @@
 			let threads = [];
 			let expandedThreads = new Set();
 
-			// API endpoint for the threads - update this to your Vercel deployment URL
-			const API_BASE_URL =
-				"https://openai-proxy-gd5329am0-js06283s-projects.vercel.app";
+			// API endpoint for the threads - flexible configuration
+			function getApiBaseUrl() {
+				// Check for URL parameter first (e.g., ?api=https://my-api.vercel.app)
+				const urlParams = new URLSearchParams(window.location.search);
+				const apiParam = urlParams.get("api");
+				if (apiParam) {
+					return apiParam;
+				}
+
+				// Check for environment variable (if available)
+				if (window.API_BASE_URL) {
+					return window.API_BASE_URL;
+				}
+
+				// Default to the openai-proxy deployment
+				return "https://openai-proxy-iota-nine.vercel.app";
+			}
+
+			const API_BASE_URL = getApiBaseUrl();
+			console.log("🔗 Using API base URL:", API_BASE_URL);
 
 			async function loadThreads() {
 				const container = document.getElementById("threads-container");
@@ -464,7 +481,9 @@
                     <div class="error">
                         <strong>Error loading threads:</strong><br>
                         ${error.message}<br><br>
-                        <small>Make sure the API endpoint is accessible and CORS is properly configured.</small>
+                        <small>Make sure the API endpoint is accessible and CORS is properly configured.</small><br>
+                        <small>Current API URL: ${API_BASE_URL}/api/threads</small><br>
+                        <small>You can specify a different API URL using ?api=https://your-api-url.vercel.app</small>
                     </div>
                 `;
 				}
@@ -545,7 +564,50 @@
 					if (message.outputType === "logs") {
 						content = formatCodeBlock(content, "text");
 					} else if (message.outputType === "image") {
-						content = `📊 Generated Image: ${content}`;
+						// Handle image display using base64 data from message
+						console.log("🖼️ Processing image message:", {
+							imageId: message.imageId,
+							hasImageData: !!message.imageData,
+							hasBase64Data: !!(
+								message.imageData && message.imageData.base64Data
+							),
+							contentType: message.imageData?.contentType,
+							dataLength: message.imageData?.base64Data?.length,
+						});
+
+						if (message.imageData && message.imageData.base64Data) {
+							const imageUrl = `data:${message.imageData.contentType};base64,${message.imageData.base64Data}`;
+							console.log("🖼️ Created image URL:", {
+								urlLength: imageUrl.length,
+								urlPreview: imageUrl.substring(0, 100) + "...",
+							});
+
+							content = `
+								<div style="margin: 10px 0;">
+									<div style="font-weight: 600; color: #1976d2; margin-bottom: 8px;">
+										🖼️ Generated Image
+									</div>
+									<img src="${imageUrl}" 
+										 alt="Generated Image" 
+										 style="max-width: 100%; height: auto; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); cursor: pointer;"
+										 onclick="openImageModal('${imageUrl}')"
+										 title="Click to view full size"
+										 onload="console.log('✅ Image loaded successfully:', '${message.imageId}')"
+										 onerror="console.error('❌ Image failed to load:', '${
+												message.imageId
+											}', this.src.substring(0, 100) + '...')"
+									/>
+									<div style="font-size: 12px; color: #666; margin-top: 4px;">
+										File ID: ${message.imageId} | Size: ${Math.round(
+								message.imageData.size / 1024
+							)}KB
+									</div>
+								</div>
+							`;
+						} else {
+							console.log("❌ No image data available for:", message.imageId);
+							content = `📊 Generated Image: ${message.imageId} (not available in database)`;
+						}
 					} else if (message.outputType === "error") {
 						content = `❌ Error: ${content}`;
 					}
@@ -657,6 +719,97 @@
 
 			// Auto-refresh every 30 seconds
 			setInterval(loadThreads, 30000);
+
+			// Function to open image in modal for full-size viewing
+			function openImageModal(imageUrl) {
+				// Remove existing modal if any
+				const existingModal = document.getElementById("image-modal");
+				if (existingModal) {
+					existingModal.remove();
+				}
+
+				// Create modal overlay
+				const modal = document.createElement("div");
+				modal.id = "image-modal";
+				modal.style.position = "fixed";
+				modal.style.top = "0";
+				modal.style.left = "0";
+				modal.style.width = "100%";
+				modal.style.height = "100%";
+				modal.style.backgroundColor = "rgba(0, 0, 0, 0.8)";
+				modal.style.display = "flex";
+				modal.style.justifyContent = "center";
+				modal.style.alignItems = "center";
+				modal.style.zIndex = "10000";
+				modal.style.cursor = "pointer";
+
+				// Create modal content
+				const modalContent = document.createElement("div");
+				modalContent.style.position = "relative";
+				modalContent.style.maxWidth = "90%";
+				modalContent.style.maxHeight = "90%";
+				modalContent.style.cursor = "default";
+
+				// Create close button
+				const closeButton = document.createElement("button");
+				closeButton.innerHTML = "×";
+				closeButton.style.position = "absolute";
+				closeButton.style.top = "-40px";
+				closeButton.style.right = "0";
+				closeButton.style.background = "none";
+				closeButton.style.border = "none";
+				closeButton.style.color = "white";
+				closeButton.style.fontSize = "30px";
+				closeButton.style.cursor = "pointer";
+				closeButton.style.padding = "5px 10px";
+				closeButton.style.borderRadius = "5px";
+				closeButton.style.transition = "background-color 0.2s";
+
+				closeButton.onmouseover = function () {
+					this.style.backgroundColor = "rgba(255, 255, 255, 0.1)";
+				};
+				closeButton.onmouseout = function () {
+					this.style.backgroundColor = "transparent";
+				};
+
+				// Create full-size image
+				const fullImage = document.createElement("img");
+				fullImage.src = imageUrl;
+				fullImage.style.maxWidth = "100%";
+				fullImage.style.maxHeight = "100%";
+				fullImage.style.objectFit = "contain";
+				fullImage.style.borderRadius = "8px";
+				fullImage.style.boxShadow = "0 4px 20px rgba(0,0,0,0.3)";
+
+				// Add event listeners
+				closeButton.onclick = function (e) {
+					e.stopPropagation();
+					modal.remove();
+				};
+				modal.onclick = function () {
+					modal.remove();
+				};
+				modalContent.onclick = function (e) {
+					e.stopPropagation();
+				};
+
+				// Assemble modal
+				modalContent.appendChild(closeButton);
+				modalContent.appendChild(fullImage);
+				modal.appendChild(modalContent);
+
+				// Add to document
+				document.body.appendChild(modal);
+
+				// Add keyboard support
+				const handleKeyPress = function (e) {
+					if (e.key === "Escape") {
+						modal.remove();
+						document.removeEventListener("keydown", handleKeyPress);
+					}
+				};
+				document.addEventListener("keydown", handleKeyPress);
+			}
 		</script>
 	</body>
 </html>
