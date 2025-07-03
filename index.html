@@ -530,6 +530,12 @@
 																	thread.messages[thread.messages.length - 1]
 																		?.timestamp || Date.now()
 																).toLocaleString()}
+                                ${thread.qid ? `• QID: ${thread.qid}` : ""}
+                                ${
+																	thread.response_id
+																		? `• Response ID: ${thread.response_id}`
+																		: ""
+																}
                             </div>
                         </div>
                         <div>${
